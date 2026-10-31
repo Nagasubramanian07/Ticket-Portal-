@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Daily Work Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f3f5f7;--surface:#fff;--ink:#14202b;--muted:#5d6b78;--line:#d9e0e6;--accent:#0b6e6e;--accent-ink:#fff;--warn:#b4520a;--warn-bg:#fdf0e3;--open:#1d4ed8;--prog:#9a6700;--hold:#6b4fa3;--done:#2e7d4f;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10171d;--surface:#18222b;--ink:#e6edf3;--muted:#93a1ae;--line:#2a3743;--accent:#4fb8b0;--accent-ink:#06201f;--warn:#f0a35e;--warn-bg:#3a2a18;--open:#7aa2ff;--prog:#e0b24d;--hold:#b79cf0;--done:#6cc58f;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#10171d;--surface:#18222b;--ink:#e6edf3;--muted:#93a1ae;--line:#2a3743;--accent:#4fb8b0;--accent-ink:#06201f;--warn:#f0a35e;--warn-bg:#3a2a18;--open:#7aa2ff;--prog:#e0b24d;--hold:#b79cf0;--done:#6cc58f;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 "IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:1000px;margin:0 auto;padding:20px 16px 48px}
+header{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+h1{font-size:22px;margin:0;font-weight:600}
+.today{color:var(--muted);font-size:14px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-bottom:16px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:10px 12px;cursor:pointer;text-align:left;font:inherit;color:inherit}
+.stat b{display:block;font-size:22px;font-weight:600}
+.stat span{color:var(--muted);font-size:13px}
+.stat.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+form{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:14px;display:grid;grid-template-columns:150px 150px 1fr 150px auto;gap:10px;align-items:end;margin-bottom:16px}
+label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:8px 9px;width:100%}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+button{font:inherit;cursor:pointer;border-radius:5px}
+.add{background:var(--accent);color:var(--accent-ink);border:0;padding:9px 18px;font-weight:600;height:38px}
+.tools{display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.tools input{flex:1;min-width:180px}
+.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);padding:8px 12px}
+.wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:6px}
+table{border-collapse:collapse;width:100%;min-width:680px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:13px;color:var(--muted);font-weight:500;background:var(--bg)}
+tr:last-child td{border-bottom:0}
+td.num{font-weight:600;white-space:nowrap}
+td.age{white-space:nowrap}
+.age.late{color:var(--warn);font-weight:600}
+td select{width:auto;padding:5px 7px;font-weight:500}
+.s-Open{color:var(--open)}.s-In\ Progress{color:var(--prog)}.s-On\ Hold{color:var(--hold)}.s-Closed{color:var(--done)}
+.del{background:none;border:0;color:var(--muted);padding:4px 8px}
+.del:hover{color:var(--warn)}
+.empty{padding:28px 16px;text-align:center;color:var(--muted)}
+.note{color:var(--muted);font-size:13px;margin-top:10px}
+@media (max-width:760px){form{grid-template-columns:1fr 1fr}form label.wide{grid-column:1/-1}.add{grid-column:1/-1}}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>Daily work tracker</h1>
+  <div class="today" id="today"></div>
+</header>
+
+<div class="stats" id="stats"></div>
+
+<form id="f">
+  <label>Ticket number<input id="num" required placeholder="TKT-0001"></label>
+  <label>Date<input id="date" type="date" required></label>
+  <label class="wide">Description<input id="desc" required placeholder="What needs to be done?"></label>
+  <label>Status<select id="status"></select></label>
+  <button class="add" type="submit">Add entry</button>
+</form>
+
+<div class="tools">
+  <input id="q" type="search" placeholder="Search ticket or description">
+  <button class="ghost" id="copy" type="button">Copy for Excel</button>
+</div>
+
+<div class="wrap">
+<table>
+  <thead><tr><th>Ticket Number</th><th>Date</th><th>Description</th><th>Aging</th><th>Status</th><th></th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+<div class="empty" id="empty" hidden>No entries yet. Add today’s first ticket above.</div>
+</div>
+<p class="note" id="sync">Loading…</p>
+<p class="note">Aging counts days from the ticket date and stops when the status is set to Closed.</p>
+</main>
+
+<script>
+var STATUSES=["Open","In Progress","On Hold","Closed"];
+var KEY="work-tracker-pass";
+var items=[],filter="All";
+
+function pass(){try{return localStorage.getItem(KEY)||""}catch(e){return""}}
+function note(m){document.getElementById("sync").textContent=m}
+function api(method,qs,body){
+  return fetch("/api/tickets"+(qs||""),{method:method,headers:{"Content-Type":"application/json","x-app-key":pass()},body:body?JSON.stringify(body):undefined}).then(function(r){
+    if(r.status===401){
+      var p=prompt("Enter the app password");
+      if(p===null)throw new Error("auth");
+      try{localStorage.setItem(KEY,p)}catch(e){}
+      return api(method,qs,body);
+    }
+    if(!r.ok)throw new Error("fail");
+    return r.json();
+  });
+}
+function refresh(){
+  return api("GET").then(function(rows){items=rows;note("Live: entries are stored in your Neon database.");render()})
+    .catch(function(){note("Could not reach the server. Check your connection and try again.")});
+}
+function fail(){note("Could not save that change. Try again.")}
+
+function iso(d){var m=d.getMonth()+1,day=d.getDate();return d.getFullYear()+"-"+(m<10?"0":"")+m+"-"+(day<10?"0":"")+day}
+function todayIso(){return iso(new Date())}
+function days(a,b){var x=a.split("-"),y=b.split("-");return Math.round((Date.UTC(y[0],y[1]-1,y[2])-Date.UTC(x[0],x[1]-1,x[2]))/864e5)}
+function aging(t){return Math.max(0,days(t.date,t.status==="Closed"&&t.closed?t.closed:todayIso()))}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function nextNum(){var max=0;items.forEach(function(t){var m=/(\d+)$/.exec(t.num);if(m)max=Math.max(max,+m[1])});var n=String(max+1);while(n.length<4)n="0"+n;return"TKT-"+n}
+
+function render(){
+  var q=document.getElementById("q").value.toLowerCase();
+  var counts={All:items.length};STATUSES.forEach(function(s){counts[s]=0});
+  items.forEach(function(t){counts[t.status]++});
+  document.getElementById("stats").innerHTML=["All"].concat(STATUSES).map(function(s){
+    return '<button class="stat'+(filter===s?" on":"")+'" data-s="'+s+'"><b>'+counts[s]+'</b><span>'+s+'</span></button>'}).join("");
+  var list=items.filter(function(t){
+    return (filter==="All"||t.status===filter)&&(!q||(t.num+" "+t.desc).toLowerCase().indexOf(q)>-1)});
+  document.getElementById("rows").innerHTML=list.map(function(t){
+    var a=aging(t),late=t.status!=="Closed"&&a>=7;
+    return '<tr><td class="num">'+esc(t.num)+'</td><td>'+esc(t.date)+'</td><td>'+esc(t.desc)+'</td>'+
+      '<td class="age'+(late?" late":"")+'">'+a+(a===1?" day":" days")+'</td>'+
+      '<td><select data-id="'+t.id+'" class="s-'+t.status+'">'+STATUSES.map(function(s){return'<option'+(s===t.status?" selected":"")+'>'+s+'</option>'}).join("")+'</select></td>'+
+      '<td><button class="del" data-del="'+t.id+'" aria-label="Delete '+esc(t.num)+'">✕</button></td></tr>'}).join("");
+  document.getElementById("empty").hidden=list.length>0;
+  document.getElementById("empty").textContent=items.length?"No entries match this filter.":"No entries yet. Add today’s first ticket above.";
+}
+
+document.getElementById("today").textContent=new Date().toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+document.getElementById("status").innerHTML=STATUSES.map(function(s){return"<option>"+s+"</option>"}).join("");
+document.getElementById("date").value=todayIso();
+
+document.getElementById("f").addEventListener("submit",function(e){
+  e.preventDefault();
+  var st=document.getElementById("status").value;
+  var body={num:document.getElementById("num").value.trim(),date:document.getElementById("date").value,desc:document.getElementById("desc").value.trim(),status:st,closed:todayIso()};
+  api("POST","",body).then(function(){
+    document.getElementById("desc").value="";
+    document.getElementById("date").value=todayIso();
+    return refresh();
+  }).then(function(){document.getElementById("num").value=nextNum();document.getElementById("desc").focus()}).catch(fail);
+});
+document.getElementById("stats").addEventListener("click",function(e){var b=e.target.closest("[data-s]");if(b){filter=b.dataset.s;render()}});
+document.getElementById("q").addEventListener("input",render);
+document.getElementById("rows").addEventListener("change",function(e){
+  var id=e.target.dataset.id;if(!id)return;
+  api("PATCH","?id="+id,{status:e.target.value,closed:todayIso()}).then(refresh).catch(fail);
+});
+document.getElementById("rows").addEventListener("click",function(e){
+  var b=e.target.closest("[data-del]");if(!b)return;
+  if(confirm("Delete this entry?"))api("DELETE","?id="+b.dataset.del).then(refresh).catch(fail);
+});
+document.getElementById("copy").addEventListener("click",function(){
+  var btn=this;
+  var txt="Ticket Number\tDate\tDescription\tAging\tStatus\n"+items.map(function(t){return[t.num,t.date,t.desc,aging(t),t.status].join("\t")}).join("\n");
+  try{navigator.clipboard.writeText(txt).then(function(){btn.textContent="Copied";setTimeout(function(){btn.textContent="Copy for Excel"},1500)},function(){btn.textContent="Copy blocked"})}catch(e){btn.textContent="Copy blocked"}
+});
+
+refresh().then(function(){document.getElementById("num").value=nextNum()});
+</script>
+</body>
+</html>
