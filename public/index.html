@@ -46,6 +46,20 @@ td select{width:auto;padding:5px 7px;font-weight:500}
 .empty{padding:28px 16px;text-align:center;color:var(--muted)}
 .note{color:var(--muted);font-size:13px;margin-top:10px}
 @media (max-width:760px){form{grid-template-columns:1fr 1fr}form label.wide{grid-column:1/-1}.add{grid-column:1/-1}}
+form label.full{grid-column:1/-1}
+textarea{resize:vertical;min-height:70px}
+tbody tr[data-open]{cursor:pointer}
+tbody tr[data-open]:hover{background:var(--bg)}
+dialog{background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:18px;width:min(560px,calc(100vw - 24px))}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+dialog label{margin-top:12px}
+.dh{display:flex;justify-content:space-between;align-items:center}
+.dh h2{margin:0;font-size:18px}
+.facts{display:grid;grid-template-columns:repeat(2,1fr);gap:10px 16px;margin:14px 0 0}
+.facts dt{font-size:13px;color:var(--muted)}
+.facts dd{margin:2px 0 0;font-weight:500}
+.facts select{width:auto}
+.da{display:flex;gap:10px;margin-top:16px}
 </style>
 </head>
 <body>
@@ -60,19 +74,20 @@ td select{width:auto;padding:5px 7px;font-weight:500}
 <form id="f">
   <label>Ticket number<input id="num" required placeholder="TKT-0001"></label>
   <label>Date<input id="date" type="date" required></label>
-  <label class="wide">Description<input id="desc" required placeholder="What needs to be done?"></label>
+  <label class="wide">Title<input id="desc" required maxlength="200" placeholder="Short title of the work"></label>
   <label>Status<select id="status"></select></label>
   <button class="add" type="submit">Add entry</button>
+  <label class="full">Description (optional)<textarea id="details" rows="3" placeholder="Add general details, steps taken, contacts, notes…"></textarea></label>
 </form>
 
 <div class="tools">
-  <input id="q" type="search" placeholder="Search ticket or description">
+  <input id="q" type="search" placeholder="Search ticket, title or description">
   <button class="ghost" id="copy" type="button">Copy for Excel</button>
 </div>
 
 <div class="wrap">
 <table>
-  <thead><tr><th>Ticket Number</th><th>Date</th><th>Description</th><th>Aging</th><th>Status</th><th></th></tr></thead>
+  <thead><tr><th>Ticket Number</th><th>Date</th><th>Title</th><th>Aging</th><th>Status</th><th></th></tr></thead>
   <tbody id="rows"></tbody>
 </table>
 <div class="empty" id="empty" hidden>No entries yet. Add today’s first ticket above.</div>
@@ -80,6 +95,19 @@ td select{width:auto;padding:5px 7px;font-weight:500}
 <p class="note" id="sync">Loading…</p>
 <p class="note">Aging counts days from the ticket date and stops when the status is set to Closed.</p>
 </main>
+
+<dialog id="dlg">
+  <div class="dh"><h2 id="d-num"></h2><button class="del" id="d-x" type="button" aria-label="Close">✕</button></div>
+  <dl class="facts">
+    <div><dt>Date</dt><dd id="d-date"></dd></div>
+    <div><dt>Aging</dt><dd id="d-age"></dd></div>
+    <div><dt>Closed on</dt><dd id="d-closed"></dd></div>
+    <div><dt>Status</dt><dd><select id="d-status"></select></dd></div>
+  </dl>
+  <label>Title<input id="d-title" maxlength="200"></label>
+  <label>Description<textarea id="d-details" rows="6" placeholder="No description added yet."></textarea></label>
+  <div class="da"><button class="add" id="d-save" type="button">Save changes</button><button class="ghost" id="d-delete" type="button">Delete</button></div>
+</dialog>
 
 <script>
 var STATUSES=["Open","In Progress","On Hold","Closed"];
@@ -120,10 +148,10 @@ function render(){
   document.getElementById("stats").innerHTML=["All"].concat(STATUSES).map(function(s){
     return '<button class="stat'+(filter===s?" on":"")+'" data-s="'+s+'"><b>'+counts[s]+'</b><span>'+s+'</span></button>'}).join("");
   var list=items.filter(function(t){
-    return (filter==="All"||t.status===filter)&&(!q||(t.num+" "+t.desc).toLowerCase().indexOf(q)>-1)});
+    return (filter==="All"||t.status===filter)&&(!q||(t.num+" "+t.desc+" "+(t.details||"")).toLowerCase().indexOf(q)>-1)});
   document.getElementById("rows").innerHTML=list.map(function(t){
     var a=aging(t),late=t.status!=="Closed"&&a>=7;
-    return '<tr><td class="num">'+esc(t.num)+'</td><td>'+esc(t.date)+'</td><td>'+esc(t.desc)+'</td>'+
+    return '<tr data-open="'+t.id+'" tabindex="0"><td class="num">'+esc(t.num)+'</td><td>'+esc(t.date)+'</td><td>'+esc(t.desc)+'</td>'+
       '<td class="age'+(late?" late":"")+'">'+a+(a===1?" day":" days")+'</td>'+
       '<td><select data-id="'+t.id+'" class="s-'+t.status+'">'+STATUSES.map(function(s){return'<option'+(s===t.status?" selected":"")+'>'+s+'</option>'}).join("")+'</select></td>'+
       '<td><button class="del" data-del="'+t.id+'" aria-label="Delete '+esc(t.num)+'">✕</button></td></tr>'}).join("");
@@ -138,9 +166,9 @@ document.getElementById("date").value=todayIso();
 document.getElementById("f").addEventListener("submit",function(e){
   e.preventDefault();
   var st=document.getElementById("status").value;
-  var body={num:document.getElementById("num").value.trim(),date:document.getElementById("date").value,desc:document.getElementById("desc").value.trim(),status:st,closed:todayIso()};
+  var body={num:document.getElementById("num").value.trim(),date:document.getElementById("date").value,desc:document.getElementById("desc").value.trim(),details:document.getElementById("details").value.trim(),status:st,closed:todayIso()};
   api("POST","",body).then(function(){
-    document.getElementById("desc").value="";
+    document.getElementById("desc").value="";document.getElementById("details").value="";
     document.getElementById("date").value=todayIso();
     return refresh();
   }).then(function(){document.getElementById("num").value=nextNum();document.getElementById("desc").focus()}).catch(fail);
@@ -152,12 +180,45 @@ document.getElementById("rows").addEventListener("change",function(e){
   api("PATCH","?id="+id,{status:e.target.value,closed:todayIso()}).then(refresh).catch(fail);
 });
 document.getElementById("rows").addEventListener("click",function(e){
-  var b=e.target.closest("[data-del]");if(!b)return;
-  if(confirm("Delete this entry?"))api("DELETE","?id="+b.dataset.del).then(refresh).catch(fail);
+  var b=e.target.closest("[data-del]");
+  if(b){if(confirm("Delete this entry?"))api("DELETE","?id="+b.dataset.del).then(refresh).catch(fail);return}
+  if(e.target.closest("select"))return;
+  var r=e.target.closest("tr[data-open]");if(r)openItem(r.dataset.open);
+});
+document.getElementById("rows").addEventListener("keydown",function(e){
+  if(e.key!=="Enter"||e.target.tagName!=="TR")return;
+  openItem(e.target.dataset.open);
+});
+
+var cur=null,dlg=document.getElementById("dlg");
+function openItem(id){
+  cur=items.filter(function(t){return String(t.id)===String(id)})[0];if(!cur)return;
+  var a=aging(cur);
+  document.getElementById("d-num").textContent=cur.num;
+  document.getElementById("d-date").textContent=cur.date;
+  document.getElementById("d-age").textContent=a+(a===1?" day":" days");
+  document.getElementById("d-closed").textContent=cur.status==="Closed"&&cur.closed?cur.closed:"Not closed";
+  document.getElementById("d-status").innerHTML=STATUSES.map(function(s){return'<option'+(s===cur.status?" selected":"")+'>'+s+'</option>'}).join("");
+  document.getElementById("d-title").value=cur.desc;
+  document.getElementById("d-details").value=cur.details||"";
+  dlg.showModal();
+}
+document.getElementById("d-x").addEventListener("click",function(){dlg.close()});
+dlg.addEventListener("click",function(e){if(e.target===dlg)dlg.close()});
+document.getElementById("d-save").addEventListener("click",function(){
+  var title=document.getElementById("d-title").value.trim();
+  if(!title){document.getElementById("d-title").focus();return}
+  var body={desc:title,details:document.getElementById("d-details").value.trim()};
+  var st=document.getElementById("d-status").value;
+  if(st!==cur.status){body.status=st;body.closed=todayIso()}
+  api("PATCH","?id="+cur.id,body).then(function(){dlg.close();return refresh()}).catch(fail);
+});
+document.getElementById("d-delete").addEventListener("click",function(){
+  if(confirm("Delete this entry?"))api("DELETE","?id="+cur.id).then(function(){dlg.close();return refresh()}).catch(fail);
 });
 document.getElementById("copy").addEventListener("click",function(){
   var btn=this;
-  var txt="Ticket Number\tDate\tDescription\tAging\tStatus\n"+items.map(function(t){return[t.num,t.date,t.desc,aging(t),t.status].join("\t")}).join("\n");
+  var txt="Ticket Number\tDate\tTitle\tAging\tStatus\n"+items.map(function(t){return[t.num,t.date,t.desc,aging(t),t.status].join("\t")}).join("\n");
   try{navigator.clipboard.writeText(txt).then(function(){btn.textContent="Copied";setTimeout(function(){btn.textContent="Copy for Excel"},1500)},function(){btn.textContent="Copy blocked"})}catch(e){btn.textContent="Copy blocked"}
 });
 

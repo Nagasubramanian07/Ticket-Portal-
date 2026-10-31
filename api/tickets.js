@@ -7,15 +7,18 @@ let ready = null;
 
 function init() {
   if (!ready) {
-    ready = sql`CREATE TABLE IF NOT EXISTS tickets (
-      id SERIAL PRIMARY KEY,
-      ticket_number TEXT NOT NULL,
-      ticket_date DATE NOT NULL,
-      description TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'Open',
-      closed_date DATE,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    )`.catch((e) => { ready = null; throw e; });
+    ready = (async () => {
+      await sql`CREATE TABLE IF NOT EXISTS tickets (
+        id SERIAL PRIMARY KEY,
+        ticket_number TEXT NOT NULL,
+        ticket_date DATE NOT NULL,
+        description TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'Open',
+        closed_date DATE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )`;
+      await sql`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS details TEXT NOT NULL DEFAULT ''`;
+    })().catch((e) => { ready = null; throw e; });
   }
   return ready;
 }
@@ -32,7 +35,7 @@ export default async function handler(req, res) {
       const rows = await sql`
         SELECT id, ticket_number AS num,
                to_char(ticket_date, 'YYYY-MM-DD') AS date,
-               description AS "desc", status,
+               description AS "desc", details, status,
                to_char(closed_date, 'YYYY-MM-DD') AS closed
         FROM tickets ORDER BY ticket_date DESC, id DESC`;
       return res.status(200).json(rows);
@@ -41,17 +44,18 @@ export default async function handler(req, res) {
     if (req.method === "POST") {
       const b = req.body || {};
       const num = String(b.num || "").trim().slice(0, 60);
-      const desc = String(b.desc || "").trim().slice(0, 2000);
+      const desc = String(b.desc || "").trim().slice(0, 200);
+      const details = String(b.details || "").trim().slice(0, 5000);
       if (!num || !desc || !DATE.test(b.date || "") || !STATUSES.includes(b.status)) {
         return res.status(400).json({ error: "invalid entry" });
       }
       const closed = b.status === "Closed" && DATE.test(b.closed || "") ? b.closed : null;
       const rows = await sql`
-        INSERT INTO tickets (ticket_number, ticket_date, description, status, closed_date)
-        VALUES (${num}, ${b.date}, ${desc}, ${b.status}, ${closed})
+        INSERT INTO tickets (ticket_number, ticket_date, description, details, status, closed_date)
+        VALUES (${num}, ${b.date}, ${desc}, ${details}, ${b.status}, ${closed})
         RETURNING id, ticket_number AS num,
                   to_char(ticket_date, 'YYYY-MM-DD') AS date,
-                  description AS "desc", status,
+                  description AS "desc", details, status,
                   to_char(closed_date, 'YYYY-MM-DD') AS closed`;
       return res.status(201).json(rows[0]);
     }
@@ -61,9 +65,21 @@ export default async function handler(req, res) {
 
     if (req.method === "PATCH") {
       const b = req.body || {};
-      if (!STATUSES.includes(b.status)) return res.status(400).json({ error: "invalid status" });
-      const closed = b.status === "Closed" && DATE.test(b.closed || "") ? b.closed : null;
-      await sql`UPDATE tickets SET status = ${b.status}, closed_date = ${closed} WHERE id = ${id}`;
+      const status = b.status == null ? null : b.status;
+      if (status !== null && !STATUSES.includes(status)) {
+        return res.status(400).json({ error: "invalid status" });
+      }
+      const closed = status === "Closed" && DATE.test(b.closed || "") ? b.closed : null;
+      const desc = b.desc == null ? null : String(b.desc).trim().slice(0, 200);
+      const details = b.details == null ? null : String(b.details).trim().slice(0, 5000);
+      if (desc === "") return res.status(400).json({ error: "title required" });
+      await sql`
+        UPDATE tickets SET
+          status = COALESCE(${status}::text, status),
+          closed_date = CASE WHEN ${status}::text IS NULL THEN closed_date ELSE ${closed}::date END,
+          description = COALESCE(${desc}::text, description),
+          details = COALESCE(${details}::text, details)
+        WHERE id = ${id}`;
       return res.status(200).json({ ok: true });
     }
 

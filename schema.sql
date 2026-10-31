@@ -7,3 +7,5 @@ CREATE TABLE IF NOT EXISTS tickets (
   closed_date   DATE,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS details TEXT NOT NULL DEFAULT '';
